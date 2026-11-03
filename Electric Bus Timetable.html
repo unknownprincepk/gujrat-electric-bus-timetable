@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="ur">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Punjab e-Transit Gujrat Route Planner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; }
+    </style>
+</head>
+<body class="bg-white text-slate-800 min-h-screen flex flex-col justify-between">
+
+    <div class="w-full max-w-md mx-auto p-4 flex-grow">
+        <!-- Header -->
+        <header class="text-center py-4 border-b border-gray-200 mb-4">
+            <div class="inline-flex items-center justify-center bg-emerald-100 text-emerald-700 w-12 h-12 rounded-full mb-2">
+                <i class="fa-solid fa-bus text-2xl"></i>
+            </div>
+            <h1 class="text-2xl font-bold text-gray-900">Electric Bus Route Planner</h1>
+            <p class="text-xs text-gray-500 mt-1">Punjab e-Transit • Gujrat & Suburbs</p>
+        </header>
+
+        <!-- Day Switcher Selector -->
+        <div class="bg-gray-100 p-1 rounded-xl flex items-center mb-5 text-xs font-semibold">
+            <button id="btnWeekday" onclick="setScheduleType('weekday')" class="flex-1 py-2 rounded-lg text-center transition-all bg-emerald-600 text-white shadow-sm">
+                Monday – Saturday Schedule
+            </button>
+            <button id="btnSunday" onclick="setScheduleType('sunday')" class="flex-1 py-2 rounded-lg text-center transition-all text-gray-600 hover:text-gray-900">
+                Sunday Schedule
+            </button>
+        </div>
+
+        <!-- Main Input Card -->
+        <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm mb-6">
+            <!-- Starting Stop -->
+            <div class="mb-4">
+                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                    <i class="fa-solid fa-location-dot text-emerald-600 mr-1"></i> Starting Stop (Boarding)
+                </label>
+                <select id="startStop" onchange="updateDestinations(); calculateRoute();" class="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-xl p-3 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                </select>
+            </div>
+
+            <!-- Swap Indicator -->
+            <div class="flex justify-center -my-2 relative z-10">
+                <div class="bg-emerald-50 border border-emerald-200 text-emerald-600 w-8 h-8 rounded-full flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-arrow-down-up-lock"></i>
+                </div>
+            </div>
+
+            <!-- Ending Stop -->
+            <div class="mb-4">
+                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                    <i class="fa-solid fa-flag-checkered text-rose-500 mr-1"></i> Destination Stop (Utarna)
+                </label>
+                <select id="endStop" onchange="calculateRoute();" class="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-xl p-3 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                </select>
+            </div>
+
+            <!-- Custom Time Option -->
+            <div class="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+                <label for="customTimeToggle" class="text-xs font-medium text-gray-600 flex items-center cursor-pointer">
+                    <input type="checkbox" id="customTimeToggle" onchange="toggleTimeInput()" class="mr-2 rounded text-emerald-600 focus:ring-emerald-500">
+                    Custom Time Select Karein
+                </label>
+                <input type="time" id="customTime" onchange="calculateRoute()" class="hidden bg-gray-50 border border-gray-300 text-xs rounded-lg p-1.5 focus:ring-emerald-500 focus:border-emerald-500">
+            </div>
+        </div>
+
+        <!-- Result Container -->
+        <div id="resultCard" class="bg-gray-50 border border-gray-200 rounded-2xl p-5 mb-6">
+            <!-- Dynamic route content injected by JS -->
+        </div>
+
+        <!-- Bus Departure Status (Passed & Upcoming) -->
+        <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm mb-6">
+            <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center">
+                <i class="fa-solid fa-clock text-emerald-600 mr-2"></i> Boarding Stop Departure Schedule
+            </h3>
+
+            <!-- Next Buses -->
+            <div class="mb-4">
+                <p class="text-xs font-semibold text-emerald-700 uppercase tracking-wider mb-2">Agli Aane Wali Buses</p>
+                <div id="upcomingBuses" class="space-y-2"></div>
+            </div>
+
+            <!-- Passed Buses -->
+            <div>
+                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Ja Chuki Buses</p>
+                <div id="passedBuses" class="space-y-1.5"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Developer Footer -->
+    <footer class="w-full max-w-md mx-auto text-center py-4 border-t border-gray-200 bg-white text-xs text-gray-600">
+        <p class="font-medium">Developed by <span class="font-bold text-gray-900">Ali Raza</span></p>
+        <a href="https://wa.me/923362567890" target="_blank" class="inline-flex items-center text-emerald-600 font-semibold hover:underline mt-1">
+            <i class="fa-brands fa-whatsapp text-sm mr-1.5 text-emerald-500"></i> +923362567890
+        </a>
+    </footer>
+
+    <script>
+        let currentScheduleType = 'weekday'; // 'weekday' or 'sunday'
+
+        // Timetables updated from Book1.xlsx
+        const SCHEDULES = {
+            weekday: {
+                66: {
+                    name: "Lala Musa ⇆ GBS Gujrat",
+                    stops: [
+                        { name: "Lala Musa City", min: 0 },
+                        { name: "Punjab College, Lala Musa", min: 4 },
+                        { name: "Sadiq Abad Gujrat", min: 8 },
+                        { name: "Whind", min: 12 },
+                        { name: "Kullewal Syedan", min: 16 },
+                        { name: "Chak Murtaza", min: 20 },
+                        { name: "Deona Village", min: 24 },
+                        { name: "Deona Mandi", min: 28 },
+                        { name: "Juliani Stop", min: 32 },
+                        { name: "Chamber of Commerce", min: 36 },
+                        { name: "Service Morr Stop", min: 40 },
+                        { name: "Jattuwakal Stop", min: 44 },
+                        { name: "GTS Chowk", min: 48 },
+                        { name: "GBS Gujrat", min: 52 }
+                    ],
+                    startTimes: ["06:00 AM","06:50 AM","07:40 AM","08:30 AM","09:20 AM","10:10 AM","11:00 AM","11:50 AM","12:40 PM","01:30 PM","02:20 PM","03:10 PM","04:00 PM","04:50 PM","05:40 PM","06:30 PM","07:20 PM","08:10 PM","09:00 PM"]
+                },
+                DN: {
+                    name: "Daulat Nagar ⇆ GBS Gujrat",
+                    stops: [
+                        { name: "GBS Gujrat", min: 0 },
+                        { name: "GTS Chowk, Gujrat", min: 3 },
+                        { name: "Jattuwakal Stop", min: 6 },
+                        { name: "Service Morr Stop", min: 9 },
+                        { name: "Shadman Colony Stop", min: 12 },
+                        { name: "Jinnah Chowk, Gujrat", min: 15 },
+                        { name: "Nishan e Haider Chowk", min: 18 },
+                        { name: "Katchehry Chowk, Gujrat", min: 21 },
+                        { name: "Govt Women College, Gujrat", min: 24 },
+                        { name: "Aziz Bhatti Hospital", min: 27 },
+                        { name: "Labour Colony Stop", min: 30 },
+                        { name: "Airport Chowk, Gujrat", min: 33 },
+                        { name: "Qadir Colony", min: 36 },
+                        { name: "Malhu Khokhar", min: 39 },
+                        { name: "Bokan Morr", min: 42 },
+                        { name: "Blaisar Morr", min: 45 },
+                        { name: "Uggowal", min: 48 },
+                        { name: "Banth", min: 51 },
+                        { name: "Banota", min: 54 },
+                        { name: "Mehsam", min: 57 },
+                        { name: "Dhumma Malka", min: 60 },
+                        { name: "Daulat Nagar", min: 63 }
+                    ],
+                    startTimes: ["06:00 AM","06:35 AM","07:00 AM","07:35 AM","08:00 AM","08:35 AM","09:00 AM","09:35 AM","10:00 AM","10:35 AM","11:00 AM","11:35 AM","12:00 PM","12:35 PM","01:00 PM","01:35 PM","02:00 PM","02:35 PM","03:00 PM","03:35 PM","04:00 PM","04:35 PM","05:00 PM","05:35 PM","06:00 PM","07:00 PM","08:00 PM"]
+                },
+                JJ: {
+                    name: "Jalalpur Jattan ⇆ GBS Gujrat",
+                    stops: [
+                        { name: "GBS Gujrat", min: 0 },
+                        { name: "GTS Chowk Gujrat", min: 3 },
+                        { name: "Jattuwakal Stop", min: 6 },
+                        { name: "Service Morr Stop", min: 9 },
+                        { name: "Shadman Colony Stop", min: 12 },
+                        { name: "Jinnah Chowk", min: 15 },
+                        { name: "Nishan e Haider Chowk", min: 18 },
+                        { name: "Katchehry chowk Gujrat", min: 21 },
+                        { name: "Green Town Chowk", min: 24 },
+                        { name: "Bolay Chowk", min: 27 },
+                        { name: "Lala Wari", min: 30 },
+                        { name: "Chak Bhola", min: 33 },
+                        { name: "Beowali", min: 37 },
+                        { name: "Sook Kalan", min: 40 },
+                        { name: "Chak Kala", min: 43 },
+                        { name: "Shah Bhola Chowk", min: 46 },
+                        { name: "Maroof", min: 49 },
+                        { name: "Shahbaz Pur Chowk", min: 52 },
+                        { name: "Zahoor Elahi Park", min: 55 },
+                        { name: "Adda Tam Tam Chowk", min: 58 },
+                        { name: "Jalalpur Jattan", min: 61 }
+                    ],
+                    startTimes: ["06:00 AM","06:25 AM","06:50 AM","07:15 AM","07:40 AM","08:05 AM","08:30 AM","08:55 AM","09:20 AM","09:45 AM","10:10 AM","10:35 AM","11:00 AM","11:25 AM","11:50 AM","12:15 PM","12:40 PM","01:05 PM","01:30 PM","01:55 PM","02:20 PM","02:45 PM","03:10 PM","03:35 PM","04:00 PM","04:25 PM","04:50 PM","05:15 PM","05:40 PM","06:05 PM","06:30 PM","06:55 PM","07:20 PM","07:45 PM","08:10 PM","08:35 PM"]
+                },
+                MG: {
+                    name: "Mangowal ⇆ GBS Gujrat",
+                    stops: [
+                        { name: "GBS Gujrat", min: 0 },
+                        { name: "GTS Chowk, Gujrat", min: 3 },
+                        { name: "Staff Gala Chowk", min: 6 },
+                        { name: "Shaheen Chowk", min: 9 },
+                        { name: "Narowali", min: 12 },
+                        { name: "Sheikh Sukha", min: 15 },
+                        { name: "Mand Stop", min: 18 },
+                        { name: "Saroki Bridge", min: 21 },
+                        { name: "Kunjah Chowk", min: 24 },
+                        { name: "Gondal Chowk", min: 27 },
+                        { name: "Chungi Nagrianwala", min: 30 },
+                        { name: "Shabbir Sharif Hospital", min: 33 },
+                        { name: "Chakori Bakhu Stop", min: 36 },
+                        { name: "Khunan gharbi", min: 39 },
+                        { name: "Kot Allah Baksh", min: 42 },
+                        { name: "Chak Jaspal- Kunjahri", min: 45 },
+                        { name: "Gulshan Rehman Town", min: 48 },
+                        { name: "Dinga Chowk, Mangowal", min: 51 }
+                    ],
+                    startTimes: ["06:00 AM","06:23 AM","06:46 AM","07:09 AM","07:32 AM","07:55 AM","08:18 AM","08:41 AM","09:04 AM","09:27 AM","09:50 AM","10:13 AM","10:36 AM","10:59 AM","11:22 AM","11:45 AM","12:08 PM","12:31 PM","12:54 PM","01:17 PM","01:40 PM","02:03 PM","02:26 PM","02:49 PM","03:12 PM","03:35 PM","03:58 PM","04:21 PM","04:44 PM","05:07 PM","05:30 PM","05:53 PM","06:16 PM","06:39 PM","07:02 PM","07:25 PM","07:48 PM","08:11 PM","08:34 PM"]
+                }
+            },
+            sunday: {
+                66: {
+                    name: "Lala Musa ⇆ GBS Gujrat",
+                    stops: [
+                        { name: "Lala Musa City", min: 0 },
+                        { name: "Punjab College, Lala Musa", min: 4 },
+                        { name: "Sadiq Abad Gujrat", min: 8 },
+                        { name: "Whind", min: 12 },
+                        { name: "Kullewal Syedan", min: 16 },
+                        { name: "Chak Murtaza", min: 20 },
+                        { name: "Deona Village", min: 24 },
+                        { name: "Deona Mandi", min: 28 },
+                        { name: "Juliani Stop", min: 32 },
+                        { name: "Chamber of Commerce", min: 36 },
+                        { name: "Service Morr Stop", min: 40 },
+                        { name: "Jattuwakal Stop", min: 44 },
+                        { name: "GTS Chowk", min: 48 },
+                        { name: "GBS Gujrat", min: 52 }
+                    ],
+                    startTimes: ["06:00 AM","06:55 AM","07:50 AM","08:45 AM","09:40 AM","10:35 AM","11:30 AM","12:25 PM","01:20 PM","02:15 PM","03:10 PM","04:05 PM","05:00 PM","05:55 PM","06:50 PM","07:45 PM","08:40 PM"]
+                },
+                DN: {
+                    name: "Daulat Nagar ⇆ GBS Gujrat",
+                    stops: [
+                        { name: "GBS Gujrat", min: 0 },
+                        { name: "GTS Chowk, Gujrat", min: 3 },
+                        { name: "Jattuwakal Stop", min: 6 },
+                        { name: "Service Morr Stop", min: 9 },
+                        { name: "Shadman Colony Stop", min: 12 },
+                        { name: "Jinnah Chowk, Gujrat", min: 15 },
+                        { name: "Nishan e Haider Chowk", min: 18 },
+                        { name: "Katchehry Chowk, Gujrat", min: 21 },
+                        { name: "Govt Women College, Gujrat", min: 24 },
+                        { name: "Aziz Bhatti Hospital", min: 27 },
+                        { name: "Labour Colony Stop", min: 30 },
+                        { name: "Airport Chowk, Gujrat", min: 33 },
+                        { name: "Qadir Colony", min: 36 },
+                        { name: "Malhu Khokhar", min: 39 },
+                        { name: "Bokan Morr", min: 42 },
+                        { name: "Blaisar Morr", min: 45 },
+                        { name: "Uggowal", min: 48 },
+                        { name: "Banth", min: 51 },
+                        { name: "Banota", min: 54 },
+                        { name: "Mehsam", min: 57 },
+                        { name: "Dhumma Malka", min: 60 },
+                        { name: "Daulat Nagar", min: 63 }
+                    ],
+                    startTimes: ["06:00 AM","07:10 AM","08:20 AM","09:30 AM","10:40 AM","11:50 AM","01:00 PM","02:10 PM","03:20 PM","04:30 PM","05:40 PM","06:50 PM"]
+                },
+                JJ: {
+                    name: "Jalalpur Jattan ⇆ GBS Gujrat",
+                    stops: [
+                        { name: "GBS Gujrat", min: 0 },
+                        { name: "GTS Chowk Gujrat", min: 3 },
+                        { name: "Jattuwakal Stop", min: 6 },
+                        { name: "Service Morr Stop", min: 9 },
+                        { name: "Shadman Colony Stop", min: 12 },
+                        { name: "Jinnah Chowk", min: 15 },
+                        { name: "Nishan e Haider Chowk", min: 18 },
+                        { name: "Katchehry chowk Gujrat", min: 21 },
+                        { name: "Green Town Chowk", min: 24 },
+                        { name: "Bolay Chowk", min: 27 },
+                        { name: "Lala Wari", min: 30 },
+                        { name: "Chak Bhola", min: 33 },
+                        { name: "Beowali", min: 37 },
+                        { name: "Sook Kalan", min: 40 },
+                        { name: "Chak Kala", min: 43 },
+                        { name: "Shah Bhola Chowk", min: 46 },
+                        { name: "Maroof", min: 49 },
+                        { name: "Shahbaz Pur Chowk", min: 52 },
+                        { name: "Zahoor Elahi Park", min: 55 },
+                        { name: "Adda Tam Tam Chowk", min: 58 },
+                        { name: "Jalalpur Jattan", min: 61 }
+                    ],
+                    startTimes: ["06:00 AM","06:55 AM","07:50 AM","08:45 AM","09:40 AM","10:35 AM","11:30 AM","12:25 PM","01:20 PM","02:15 PM","03:10 PM","04:05 PM","05:00 PM","05:55 PM","06:50 PM","07:45 PM","08:40 PM"]
+                },
+                MG: {
+                    name: "Mangowal ⇆ GBS Gujrat",
+                    stops: [
+                        { name: "GBS Gujrat", min: 0 },
+                        { name: "GTS Chowk, Gujrat", min: 3 },
+                        { name: "Staff Gala Chowk", min: 6 },
+                        { name: "Shaheen Chowk", min: 9 },
+                        { name: "Narowali", min: 12 },
+                        { name: "Sheikh Sukha", min: 15 },
+                        { name: "Mand Stop", min: 18 },
+                        { name: "Saroki Bridge", min: 21 },
+                        { name: "Kunjah Chowk", min: 24 },
+                        { name: "Gondal Chowk", min: 27 },
+                        { name: "Chungi Nagrianwala", min: 30 },
+                        { name: "Shabbir Sharif Hospital", min: 33 },
+                        { name: "Chakori Bakhu Stop", min: 36 },
+                        { name: "Khunan gharbi", min: 39 },
+                        { name: "Kot Allah Baksh", min: 42 },
+                        { name: "Chak Jaspal- Kunjahri", min: 45 },
+                        { name: "Gulshan Rehman Town", min: 48 },
+                        { name: "Dinga Chowk, Mangowal", min: 51 }
+                    ],
+                    startTimes: ["06:00 AM","06:50 AM","07:40 AM","08:30 AM","09:20 AM","10:10 AM","11:00 AM","11:50 AM","12:40 PM","01:30 PM","02:20 PM","03:10 PM","04:00 PM","04:50 PM","05:40 PM","06:30 PM","07:20 PM","08:10 PM"]
+                }
+            }
+        };
+
+        let allStopsMap = [];
+
+        function setScheduleType(type) {
+            currentScheduleType = type;
+            const btnW = document.getElementById('btnWeekday');
+            const btnS = document.getElementById('btnSunday');
+
+            if (type === 'weekday') {
+                btnW.className = "flex-1 py-2 rounded-lg text-center transition-all bg-emerald-600 text-white shadow-sm font-bold";
+                btnS.className = "flex-1 py-2 rounded-lg text-center transition-all text-gray-600 hover:text-gray-900";
+            } else {
+                btnS.className = "flex-1 py-2 rounded-lg text-center transition-all bg-emerald-600 text-white shadow-sm font-bold";
+                btnW.className = "flex-1 py-2 rounded-lg text-center transition-all text-gray-600 hover:text-gray-900";
+            }
+            initStopsData();
+            populateStartStops();
+            updateDestinations();
+            calculateRoute();
+        }
+
+        function autoDetectDay() {
+            const day = new Date().getDay();
+            if (day === 0) {
+                setScheduleType('sunday');
+            } else {
+                setScheduleType('weekday');
+            }
+        }
+
+        function initStopsData() {
+            allStopsMap = [];
+            const activeLines = SCHEDULES[currentScheduleType];
+            Object.keys(activeLines).forEach(lineKey => {
+                const line = activeLines[lineKey];
+                line.stops.forEach((s, idx) => {
+                    allStopsMap.push({
+                        id: `${lineKey}_${idx}`,
+                        name: s.name,
+                        lineKey: lineKey,
+                        stopIdx: idx
+                    });
+                });
+            });
+
+            // Alphabetical Sorting
+            allStopsMap.sort((a, b) => a.name.localeCompare(b.name));
+        }
+
+        function populateStartStops() {
+            const startSelect = document.getElementById('startStop');
+            const prevVal = startSelect.value;
+            startSelect.innerHTML = '';
+            const activeLines = SCHEDULES[currentScheduleType];
+
+            allStopsMap.forEach(item => {
+                const opt = document.createElement('option');
+                opt.value = item.id;
+                opt.textContent = `${item.name} (${activeLines[item.lineKey].name.split(' ⇆ ')[0]})`;
+                startSelect.appendChild(opt);
+            });
+
+            if (prevVal && [...startSelect.options].some(o => o.value === prevVal)) {
+                startSelect.value = prevVal;
+            }
+        }
+
+        function updateDestinations() {
+            const startVal = document.getElementById('startStop').value;
+            const endSelect = document.getElementById('endStop');
+            const prevVal = endSelect.value;
+            endSelect.innerHTML = '';
+
+            if (!startVal) return;
+
+            const [startLineKey, startIdxStr] = startVal.split('_');
+            const startIdx = parseInt(startIdxStr);
+
+            let destinationList = allStopsMap.filter(item => item.id !== startVal);
+
+            destinationList.forEach(item => {
+                const opt = document.createElement('option');
+                opt.value = item.id;
+
+                if (item.lineKey === startLineKey) {
+                    const direction = item.stopIdx > startIdx ? "Direct Down" : "Direct Up";
+                    opt.textContent = `${item.name} (${direction})`;
+                } else {
+                    opt.textContent = `${item.name} (via GBS Gujrat Hub Transfer)`;
+                }
+                endSelect.appendChild(opt);
+            });
+
+            if (prevVal && [...endSelect.options].some(o => o.value === prevVal)) {
+                endSelect.value = prevVal;
+            }
+        }
+
+        function parseTime(timeStr) {
+            const [time, modifier] = timeStr.split(' ');
+            let [hours, minutes] = time.split(':').map(Number);
+            if (modifier === 'PM' && hours < 12) hours += 12;
+            if (modifier === 'AM' && hours === 12) hours = 0;
+            const d = new Date();
+            d.setHours(hours, minutes, 0, 0);
+            return d;
+        }
+
+        function formatTime(dateObj) {
+            let hours = dateObj.getHours();
+            let minutes = dateObj.getMinutes();
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            minutes = minutes < 10 ? '0' + minutes : minutes;
+            return `${hours}:${minutes} ${ampm}`;
+        }
+
+        function formatDuration(diffMins) {
+            if (diffMins < 0) return "Passed";
+            const hrs = Math.floor(diffMins / 60);
+            const mins = Math.round(diffMins % 60);
+            if (hrs > 0) {
+                return `${hrs} Ghanta ${mins} Mins`;
+            }
+            return `${mins} Mins`;
+        }
+
+        function getCurrentTime() {
+            if (document.getElementById('customTimeToggle').checked) {
+                const customVal = document.getElementById('customTime').value;
+                if (customVal) {
+                    const [h, m] = customVal.split(':').map(Number);
+                    const d = new Date();
+                    d.setHours(h, m, 0, 0);
+                    return d;
+                }
+            }
+            return new Date();
+        }
+
+        function toggleTimeInput() {
+            const customInput = document.getElementById('customTime');
+            const toggle = document.getElementById('customTimeToggle');
+            if (toggle.checked) {
+                customInput.classList.remove('hidden');
+                const now = new Date();
+                const hh = String(now.getHours()).padStart(2, '0');
+                const mm = String(now.getMinutes()).padStart(2, '0');
+                customInput.value = `${hh}:${mm}`;
+            } else {
+                customInput.classList.add('hidden');
+            }
+            calculateRoute();
+        }
+
+        function calculateSingleLineTimings(lineKey, startIdx, endIdx, referenceTime) {
+            const line = SCHEDULES[currentScheduleType][lineKey];
+            const isDown = startIdx <= endIdx;
+            const stopsCount = line.stops.length;
+
+            const departureOffset = isDown ? line.stops[startIdx].min : (line.stops[stopsCount - 1].min - line.stops[startIdx].min);
+            const arrivalOffset = isDown ? line.stops[endIdx].min : (line.stops[stopsCount - 1].min - line.stops[endIdx].min);
+            const travelDuration = Math.abs(arrivalOffset - departureOffset);
+
+            let nextTrip = null;
+            let minWaitMins = Infinity;
+            let passedBuses = [];
+            let upcomingBuses = [];
+
+            line.startTimes.forEach((st, tIdx) => {
+                const tripStart = parseTime(st);
+                const busAtStartStop = new Date(tripStart.getTime() + departureOffset * 60000);
+                const busAtEndStop = new Date(tripStart.getTime() + arrivalOffset * 60000);
+
+                const diffMins = (busAtStartStop - referenceTime) / 60000;
+
+                const busInfo = {
+                    tripNum: tIdx + 1,
+                    departure: busAtStartStop,
+                    arrival: busAtEndStop,
+                    diffMins: diffMins
+                };
+
+                if (diffMins >= 0) {
+                    upcomingBuses.push(busInfo);
+                    if (diffMins < minWaitMins) {
+                        minWaitMins = diffMins;
+                        nextTrip = busInfo;
+                    }
+                } else {
+                    passedBuses.push(busInfo);
+                }
+            });
+
+            const lastTrip = line.startTimes.length > 0 ? {
+                tripNum: line.startTimes.length,
+                departure: new Date(parseTime(line.startTimes[line.startTimes.length - 1]).getTime() + departureOffset * 60000),
+                arrival: new Date(parseTime(line.startTimes[line.startTimes.length - 1]).getTime() + arrivalOffset * 60000)
+            } : null;
+
+            return { nextTrip, travelDuration, upcomingBuses, passedBuses, lastTrip };
+        }
+
+        function calculateRoute() {
+            const startVal = document.getElementById('startStop').value;
+            const endVal = document.getElementById('endStop').value;
+            const resultCard = document.getElementById('resultCard');
+
+            if (!startVal || !endVal) return;
+
+            const [startLineKey, startIdxStr] = startVal.split('_');
+            const [endLineKey, endIdxStr] = endVal.split('_');
+            const startIdx = parseInt(startIdxStr);
+            const endIdx = parseInt(endIdxStr);
+
+            const refTime = getCurrentTime();
+            const activeLines = SCHEDULES[currentScheduleType];
+
+            // Direct Route
+            if (startLineKey === endLineKey) {
+                const res = calculateSingleLineTimings(startLineKey, startIdx, endIdx, refTime);
+                renderDirectResult(res, activeLines[startLineKey].stops[startIdx].name, activeLines[startLineKey].stops[endIdx].name);
+                renderScheduleLists(res.upcomingBuses, res.passedBuses);
+            } else {
+                // Connecting Route via GBS Gujrat Hub
+                const startLine = activeLines[startLineKey];
+                const gbsIdxLeg1 = startLine.stops.findIndex(s => s.name.includes("GBS Gujrat"));
+                const leg1 = calculateSingleLineTimings(startLineKey, startIdx, gbsIdxLeg1, refTime);
+
+                if (!leg1.nextTrip) {
+                    resultCard.innerHTML = `<div class="text-center text-rose-600 font-bold py-4"><i class="fa-solid fa-circle-exclamation mr-1"></i> Boarding stop se GBS Gujrat Hub ke liye aaj mazeed koi bus nahi hai.</div>`;
+                    renderScheduleLists([], leg1.passedBuses);
+                    return;
+                }
+
+                const endLine = activeLines[endLineKey];
+                const gbsIdxLeg2 = endLine.stops.findIndex(s => s.name.includes("GBS Gujrat"));
+                const leg1ArrivalAtHub = leg1.nextTrip.arrival;
+                
+                const leg2 = calculateSingleLineTimings(endLineKey, gbsIdxLeg2, endIdx, leg1ArrivalAtHub);
+
+                renderConnectingResult(leg1, leg2, startLine.stops[startIdx].name, endLine.stops[endIdx].name);
+                renderScheduleLists(leg1.upcomingBuses, leg1.passedBuses);
+            }
+        }
+
+        function renderDirectResult(res, startName, endName) {
+            const resultCard = document.getElementById('resultCard');
+
+            if (!res.nextTrip) {
+                resultCard.innerHTML = `<div class="text-center text-rose-600 font-bold py-4"><i class="fa-solid fa-circle-exclamation mr-1"></i> Is schedule par aaj ke din mazeed koi bus nahi hai.</div>`;
+                return;
+            }
+
+            const waitStr = formatDuration(res.nextTrip.diffMins);
+
+            resultCard.innerHTML = `
+                <div class="flex items-center justify-between mb-3 border-b border-gray-200 pb-2">
+                    <span class="text-xs font-bold text-emerald-700 uppercase tracking-wide">Direct Route (${currentScheduleType === 'weekday' ? 'Mon-Sat' : 'Sunday'})</span>
+                    <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full">
+                        Next Bus: ${waitStr} baqi
+                    </span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
+                        <p class="text-xs text-gray-400 font-medium">Boarding Departure</p>
+                        <p class="text-lg font-extrabold text-gray-900 mt-0.5">${formatTime(res.nextTrip.departure)}</p>
+                        <p class="text-xs text-emerald-600 font-semibold truncate mt-1">${startName}</p>
+                    </div>
+                    <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
+                        <p class="text-xs text-gray-400 font-medium">Destination Arrival</p>
+                        <p class="text-lg font-extrabold text-gray-900 mt-0.5">${formatTime(res.nextTrip.arrival)}</p>
+                        <p class="text-xs text-rose-500 font-semibold truncate mt-1">${endName}</p>
+                    </div>
+                </div>
+
+                <div class="bg-emerald-50 rounded-xl p-3 flex items-center justify-between text-xs text-emerald-900">
+                    <span><i class="fa-solid fa-clock mr-1 text-emerald-600"></i> Total Travel Duration:</span>
+                    <span class="font-bold">${res.travelDuration} Minutes</span>
+                </div>
+            `;
+        }
+
+        function renderConnectingResult(leg1, leg2, startName, endName) {
+            const resultCard = document.getElementById('resultCard');
+
+            const leg1WaitStr = formatDuration(leg1.nextTrip.diffMins);
+
+            // Case when connecting Leg 2 bus is NOT available after Leg 1 arrival
+            if (!leg2.nextTrip) {
+                const lastLeg2DepartureTime = leg2.lastTrip ? formatTime(leg2.lastTrip.departure) : "N/A";
+
+                resultCard.innerHTML = `
+                    <div class="flex items-center justify-between mb-3 border-b border-gray-200 pb-2">
+                        <span class="text-xs font-bold text-amber-600 uppercase tracking-wide">
+                            <i class="fa-solid fa-triangle-exclamation mr-1"></i> Partial Route Available
+                        </span>
+                        <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full">
+                            1st Bus: ${leg1WaitStr} baqi
+                        </span>
+                    </div>
+
+                    <!-- Leg 1 Display -->
+                    <div class="bg-white p-3 rounded-xl border border-gray-200 mb-3 shadow-sm">
+                        <div class="flex justify-between text-xs text-gray-500 font-bold mb-1">
+                            <span>BUS 1 (${startName} ➔ GBS Gujrat)</span>
+                            <span>Trip #${leg1.nextTrip.tripNum}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-sm font-extrabold text-gray-900">
+                            <div>
+                                <span>${formatTime(leg1.nextTrip.departure)}</span>
+                                <span class="block text-xs font-normal text-emerald-600">${startName}</span>
+                            </div>
+                            <i class="fa-solid fa-arrow-right text-gray-300 text-xs"></i>
+                            <div class="text-right">
+                                <span>${formatTime(leg1.nextTrip.arrival)}</span>
+                                <span class="block text-xs font-normal text-gray-500">GBS Gujrat Hub</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Warning for Missing Leg 2 -->
+                    <div class="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-medium">
+                        <p class="font-bold mb-1"><i class="fa-solid fa-circle-xmark text-rose-600 mr-1"></i> Aage connecting bus available nahi hai!</p>
+                        GBS Gujrat Hub se <strong>${endName}</strong> ke liye aakhri bus <strong>${lastLeg2DepartureTime}</strong> par ja chuki thi, is liye is waqt aage mazeed koi bus available nahi hai.
+                    </div>
+                `;
+                return;
+            }
+
+            const transferWaitMins = (leg2.nextTrip.departure - leg1.nextTrip.arrival) / 60000;
+            const transferWaitStr = formatDuration(transferWaitMins);
+
+            resultCard.innerHTML = `
+                <div class="flex items-center justify-between mb-3 border-b border-gray-200 pb-2">
+                    <span class="text-xs font-bold text-amber-600 uppercase tracking-wide">
+                        <i class="fa-solid fa-code-merge mr-1"></i> Transfer Route (${currentScheduleType === 'weekday' ? 'Mon-Sat' : 'Sunday'})
+                    </span>
+                    <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full">
+                        1st Bus: ${leg1WaitStr} baqi
+                    </span>
+                </div>
+
+                <!-- Leg 1 Card -->
+                <div class="bg-white p-3 rounded-xl border border-gray-200 mb-3 shadow-sm">
+                    <div class="flex justify-between text-xs text-gray-500 font-bold mb-1">
+                        <span>BUS 1 (Boarding to Hub)</span>
+                        <span>Trip #${leg1.nextTrip.tripNum}</span>
+                    </div>
+                    <div class="flex justify-between items-center text-sm font-extrabold text-gray-900">
+                        <div>
+                            <span>${formatTime(leg1.nextTrip.departure)}</span>
+                            <span class="block text-xs font-normal text-emerald-600">${startName}</span>
+                        </div>
+                        <i class="fa-solid fa-arrow-right text-gray-300 text-xs"></i>
+                        <div class="text-right">
+                            <span>${formatTime(leg1.nextTrip.arrival)}</span>
+                            <span class="block text-xs font-normal text-gray-500">GBS Gujrat Hub</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Transfer Station Wait -->
+                <div class="my-2 p-2 bg-amber-50 border border-amber-200 rounded-xl text-center text-xs text-amber-800 font-medium">
+                    <i class="fa-solid fa-clock-rotate-left mr-1 text-amber-600"></i> GBS Gujrat Station Transfer Wait: <strong>${transferWaitStr}</strong>
+                </div>
+
+                <!-- Leg 2 Card -->
+                <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm mt-3">
+                    <div class="flex justify-between text-xs text-gray-500 font-bold mb-1">
+                        <span>BUS 2 (Hub to Final Destination)</span>
+                        <span>Trip #${leg2.nextTrip.tripNum}</span>
+                    </div>
+                    <div class="flex justify-between items-center text-sm font-extrabold text-gray-900">
+                        <div>
+                            <span>${formatTime(leg2.nextTrip.departure)}</span>
+                            <span class="block text-xs font-normal text-gray-500">GBS Gujrat Hub</span>
+                        </div>
+                        <i class="fa-solid fa-arrow-right text-gray-300 text-xs"></i>
+                        <div class="text-right">
+                            <span>${formatTime(leg2.nextTrip.arrival)}</span>
+                            <span class="block text-xs font-normal text-rose-500">${endName}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderScheduleLists(upcoming, passed) {
+            const upContainer = document.getElementById('upcomingBuses');
+            const passContainer = document.getElementById('passedBuses');
+
+            upContainer.innerHTML = '';
+            passContainer.innerHTML = '';
+
+            if (upcoming.length === 0) {
+                upContainer.innerHTML = `<p class="text-xs text-gray-400 italic">Aaj koi agli bus baqi nahi hai.</p>`;
+            } else {
+                upcoming.forEach((b, idx) => {
+                    const isFirst = idx === 0;
+                    const durationText = formatDuration(b.diffMins);
+
+                    const div = document.createElement('div');
+                    div.className = `p-2.5 rounded-xl border flex items-center justify-between text-xs ${
+                        isFirst ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold' : 'bg-gray-50 border-gray-200 text-gray-700'
+                    }`;
+
+                    div.innerHTML = `
+                        <div class="flex items-center">
+                            <span class="w-6 h-6 rounded-full ${isFirst ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-600'} flex items-center justify-center text-[10px] mr-2">
+                                #${b.tripNum}
+                            </span>
+                            <span>Departure: <strong>${formatTime(b.departure)}</strong></span>
+                        </div>
+                        <span class="${isFirst ? 'text-emerald-700 font-extrabold' : 'text-gray-500'}">
+                            ${durationText} baqi
+                        </span>
+                    `;
+                    upContainer.appendChild(div);
+                });
+            }
+
+            if (passed.length === 0) {
+                passContainer.innerHTML = `<p class="text-xs text-gray-400 italic">Abhi koi bus nahi guzri.</p>`;
+            } else {
+                passed.slice(-3).reverse().forEach(b => {
+                    const div = document.createElement('div');
+                    div.className = 'p-2 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-between text-xs text-gray-400 line-through';
+                    div.innerHTML = `
+                        <span>Trip #${b.tripNum} - ${formatTime(b.departure)}</span>
+                        <span>Guzar Chuki</span>
+                    `;
+                    passContainer.appendChild(div);
+                });
+            }
+        }
+
+        // Initialize Application
+        window.onload = function() {
+            autoDetectDay();
+            initStopsData();
+            populateStartStops();
+            updateDestinations();
+            calculateRoute();
+        };
+    </script>
+</body>
+</html>
